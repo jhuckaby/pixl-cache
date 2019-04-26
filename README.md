@@ -1,6 +1,27 @@
 <details><summary>Table of Contents</summary>
 
 <!-- toc -->
+- [Overview](#overview)
+	* [Features](#features)
+	* [Benchmarks](#benchmarks)
+- [Usage](#usage)
+- [API](#api)
+	* [constructor](#constructor)
+	* [set](#set)
+	* [get](#get)
+	* [has](#has)
+	* [delete](#delete)
+	* [clear](#clear)
+	* [on](#on)
+	* [Events](#events)
+		+ [expire](#expire)
+	* [Properties](#properties)
+		+ [items](#items)
+		+ [count](#count)
+		+ [bytes](#bytes)
+- [Development](#development)
+	* [Unit Tests](#unit-tests)
+- [License](#license)
 
 </details>
 
