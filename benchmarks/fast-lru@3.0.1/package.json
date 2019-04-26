@@ -1,0 +1,14 @@
+{
+  "name": "fast-lru-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "insert-time.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "dependencies": {
+    "fast-lru": "^3.0.1",
+    "uuid": "^2.0.1"
+  }
+}
