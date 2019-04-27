@@ -1,6 +1,6 @@
 // Unit tests for pixl-cache
 
-var Cache = require('./index.js');
+var Cache = require('./cache.js');
 
 exports.tests = [
 
