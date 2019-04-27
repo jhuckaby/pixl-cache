@@ -9,9 +9,11 @@
 	* [constructor](#constructor)
 	* [set](#set)
 	* [get](#get)
+	* [getMeta](#getmeta)
 	* [has](#has)
 	* [delete](#delete)
 	* [clear](#clear)
+	* [getStats](#getstats)
 	* [on](#on)
 	* [Events](#events)
 		+ [expire](#expire)
@@ -39,6 +41,7 @@ Internally the cache is implemented as a combination of a hash and a double-link
 - Predictable results on overflow
 - Can expire based on key count or byte count
 - Event listener for expired keys
+- Can store metadata along with cache objects
 - No dependencies
 
 ## Benchmarks
@@ -110,6 +113,18 @@ Note that the `maxBytes` governor only works with values that have a `length` pr
 
 Adding new keys may cause the least recently used object(s) to be expired from the cache.
 
+You can optionally pass an object containing arbitrary metadata as the 3rd argument to `set()`.  This is stored in the cache item, and does not add to the total byte count.  Example:
+
+```js
+cache.set( 'key1', "Value 1", { mydate: Date.now() } );
+```
+
+Please make sure your metadata object does *not* include the following four keys: `key`, `value`, `next` or `prev`.  Those are for internal cache use.
+
+Subsequent calls to `set()` replacing a key with differing metadata is shallow-merged in.  If a subsequent call omits metadata entirely, it is preserved.
+
+You can use [getMeta()](#getmeta) to retrieve cache objects including your metadata.
+
 ## get
 
 ```js
@@ -119,6 +134,22 @@ var value = cache.get( 'key1' );
 The `get()` method fetches a value given a key.  If the key is not found in the cache the return value will be `undefined`.  Note that when fetching any key, that object becomes the most recently used.
 
 Fetching keys will never cause any object to be expired from the cache.
+
+## getMeta
+
+```js
+var item = cache.getMeta( 'key1' );
+var mydate = item.mydate; // custom metadata
+```
+
+The `getMeta()` method fetches the internal cache object wrapper given its key, which includes any metadata you may have specified when you called `set()`.  The object will always have the following keys, along with your metadata merged in:
+
+| Key | Description |
+|-----|-------------|
+| `key` | The cache object key, as passed to `set()`. |
+| `value` | The cache object value, pas passed to `set()` and returned by `get()`. |
+| `next` | A pointer to the *next* cache object in the linked list.  Please do not touch. |
+| `prev` | A pointer to the *previous* cache object in the linked list.  Please do not touch. |
 
 ## has
 
@@ -144,11 +175,39 @@ cache.clear();
 
 The `clear()` method clears the **entire** cache, deleting all keys.  It does not reset any configuration properties.
 
+## getStats
+
+```js
+var stats = cache.getStats();
+```
+
+The `getStats()` method returns an object containing some basic statistics about the cache, including the current total keys, total bytes, fullness percentage estimate, and the 10 hottest (most used) keys.  Example response, formatted as JSON:
+
+```json
+{
+	"count": 158,
+	"bytes": 15098,
+	"full": "15.8%",
+	"hotKeys": [
+		"index/ontrack/_data/2665",
+		"index/ontrack/_data/2664",
+		"index/ontrack/_data/2663",
+		"index/ontrack/_data/2662",
+		"index/ontrack/_data/2661",
+		"index/ontrack/_data/2660",
+		"index/ontrack/_data/2659",
+		"index/ontrack/_data/2658",
+		"index/ontrack/_data/2657",
+		"index/ontrack/_data/2656"
+	]
+}
+```
+
 ## on
 
 ```js
-cache.on( 'expire', function(key, reason) {
-	console.log(`Cache expired ${key} because of ${reason}.`);
+cache.on( 'expire', function(item, reason) {
+	console.log(`Cache expired ${item.key} because of ${reason}.`);
 });
 ```
 
@@ -160,23 +219,25 @@ The following events are emitted:
 
 ### expire
 
-The `expire` event is emitted when the cache is about to expire the least recently used object, either due to total key count or byte count.  The event listener will be passed two arguments, the key being expired, and a reason:
+The `expire` event is emitted when the cache is about to expire the least recently used object, either due to total key count or byte count.  The event listener will be passed two arguments, the item being expired, and a reason:
 
 ```js
-cache.on( 'expire', function(key, reason) {
-	console.log(`Cache expired ${key} because of ${reason}.`);
+cache.on( 'expire', function(item, reason) {
+	console.log(`Cache expired ${item.key} because of ${reason}.`);
 });
 ```
 
-The reason will be either `count` (expired due to key count), or `bytes` (expired due to total byte count).
+The `item` is an object containing the original `key` and `value` as originally passed to `set()`, along with any custom metadata if applicable.  You can use this hook to persist data to disk, for example.
+
+The `reason` will be either `count` (expired due to key count), or `bytes` (expired due to total byte count).  It is always a string.
 
 ## Properties
 
-The following properties are available on pixl-cache class instances.
+The following properties are available on pixl-cache class instances:
 
 ### items
 
-The `items` property is a hash containing all the objects currently in the cache, keyed by their keys.  Please do not directly manipulate this object, as it will become out of sync with the linked list system.  However, you are free to read from it.
+The `items` property is a hash containing all the objects currently in the cache, keyed by their actual keys.  Please do not directly manipulate this object, as it will become out of sync with the internal linked list.  However, you are free to read from it.
 
 ### count
 
@@ -186,7 +247,7 @@ The `count` property contains the current total key count in the cache.
 
 The `bytes` property contains the current total byte count in the cache.
 
-Note that if you use strings for values, the string `length` is calculated as the byte count.  This is not technically correct, due to how strings are internally represented in JavaScript as 16-bit.  If you want to use string values but set an exact maximum in bytes you may want to halve the `maxBytes` value.
+Note that if you use strings for values, the string `length` is calculated as the byte count.  This is not technically correct, due to how strings are internally represented in JavaScript as 16-bit.  If you want to use string values but set an exact maximum in bytes you may want to halve your `maxBytes` value.
 
 # Development
 

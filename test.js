@@ -27,14 +27,50 @@ exports.tests = [
 		test.ok( cache.count == 0, "Cache has incorrect number of keys after delete: " + cache.count );
 		test.ok( cache.bytes == 0, "Cache has incorrect number of bytes after delete: " + cache.bytes );
 		
+		cache.set( 'key1', 'value12345' );
+		cache.clear();
+		value = cache.get('key1');
+		
+		test.ok( !value, "Value for key1 is not correct after clear: " + value );
+		test.ok( cache.count == 0, "Cache has incorrect number of keys after clear: " + cache.count );
+		test.ok( cache.bytes == 0, "Cache has incorrect number of bytes after clear: " + cache.bytes );
+		
+		test.done();
+	},
+	
+	function metadata(test) {
+		// store object with metadata
+		var item;
+		var cache = new Cache();
+		
+		cache.set( 'key1', 'value1', { joe: 12345 } );
+		item = cache.getMeta('key1');
+		test.ok( !!item, "Failed to fetch meta for key1" );
+		test.ok( item.key === "key1", "Incorrect key for meta fetch: " + item.key );
+		test.ok( item.joe === 12345, "Missing metadata in object" );
+		
+		// update without metadata, should preserve
+		cache.set( 'key1', 'value1' );
+		item = cache.getMeta('key1');
+		test.ok( !!item, "Failed to fetch meta for key1" );
+		test.ok( item.key === "key1", "Incorrect key for meta fetch: " + item.key );
+		test.ok( item.joe === 12345, "Missing metadata in object" );
+		
+		// update metadata
+		cache.set( 'key1', 'value2', { joe: 12346 } );
+		item = cache.getMeta('key1');
+		test.ok( !!item, "Failed to fetch meta for key1 after update" );
+		test.ok( item.key === "key1", "Incorrect key for meta fetch after update: " + item.key );
+		test.ok( item.joe === 12346, "Missing metadata in object after update" );
+		
 		test.done();
 	},
 	
 	function fillItems(test) {
 		var idx, key, value, item;
 		var cache = new Cache({ maxItems: 10 });
-		cache.on('expire', function(key, reason) {
-			test.ok( false, "Expire event fired unexpectedly: " + key + " for " + reason );
+		cache.on('expire', function(item, reason) {
+			test.ok( false, "Expire event fired unexpectedly: " + item.key + " for " + reason );
 		});
 		
 		for (idx = 1; idx <= 10; idx++) {
@@ -81,8 +117,8 @@ exports.tests = [
 		
 		test.expect( 13 );
 		
-		cache.on('expire', function(key, reason) {
-			test.ok( key == "key1", "Expired key is incorrect: " + key );
+		cache.on('expire', function(item, reason) {
+			test.ok( item.key == "key1", "Expired key is incorrect: " + item.key );
 			test.ok( reason == "count", "Expired reason is incorrect: " + reason );
 		});
 		
@@ -103,8 +139,8 @@ exports.tests = [
 	function fillBytes(test) {
 		var idx, key, value, item;
 		var cache = new Cache({ maxBytes: 100 });
-		cache.on('expire', function(key, reason) {
-			test.ok( false, "Expire event fired unexpectedly: " + key + " for " + reason );
+		cache.on('expire', function(item, reason) {
+			test.ok( false, "Expire event fired unexpectedly: " + item.key + " for " + reason );
 		});
 		
 		for (idx = 1; idx <= 10; idx++) {
@@ -127,8 +163,8 @@ exports.tests = [
 		
 		test.expect( 13 );
 		
-		cache.on('expire', function(key, reason) {
-			test.ok( key == "key1", "Expired key is incorrect: " + key );
+		cache.on('expire', function(item, reason) {
+			test.ok( item.key == "key1", "Expired key is incorrect: " + item.key );
 			test.ok( reason == "bytes", "Expired reason is incorrect: " + reason );
 		});
 		
@@ -233,8 +269,8 @@ exports.tests = [
 		var idx, idy, key, value, item;
 		var cache = new Cache({ maxItems: 10 });
 		
-		cache.on('expire', function(key, reason) {
-			if (!key.match(/^random_/)) test.ok( false, "Expired key is incorrect: " + key );
+		cache.on('expire', function(item, reason) {
+			if (!item.key.match(/^random_/)) test.ok( false, "Expired key is incorrect: " + item.key );
 			if (reason != "count") test.ok( false, "Expired reason is incorrect: " + reason );
 		});
 		

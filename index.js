@@ -30,21 +30,21 @@ class Cache extends EventEmitter {
 		this.bytes = 0;
 	}
 	
-	set(key, value) {
+	set(key, value, meta) {
 		// set new key or replace existing
 		// either way, move item to head of list
 		// run maintenance after
-		if (this.has(key)) {
+		var item = this.items[key];
+		
+		if (item) {
 			// replace existing
-			var item = this.items[key];
 			this.bytes -= item.value.length || 0;
 			item.value = value;
 			this.bytes += value.length || 0;
-			this.promote(item);
 		}
 		else {
 			// add new
-			var item = this.items[key] = {
+			item = this.items[key] = {
 				key: key, 
 				value: value, 
 				prev: null, 
@@ -52,17 +52,24 @@ class Cache extends EventEmitter {
 			};
 			this.bytes += value.length || 0;
 			this.count++;
-			this.promote(item);
 		}
+		
+		// import optional metadata
+		if (meta) {
+			for (var mkey in meta) item[mkey] = meta[mkey];
+		}
+		
+		// promote to front of list
+		this.promote(item);
 		
 		// maintenance
 		if (this.maxItems && (this.count > this.maxItems)) {
-			this.emit( 'expire', this.last.key, 'count' );
+			this.emit( 'expire', this.last, 'count' );
 			this.delete( this.last.key );
 		}
 		if (this.maxBytes) {
 			while (this.bytes > this.maxBytes) {
-				this.emit( 'expire', this.last.key, 'bytes' );
+				this.emit( 'expire', this.last, 'bytes' );
 				this.delete( this.last.key );
 			}
 		}
@@ -71,18 +78,27 @@ class Cache extends EventEmitter {
 	get(key) {
 		// fetch key and return value
 		// move object to head of list
-		if (!this.has(key)) return undefined;
-		
 		var item = this.items[key];
+		if (!item) return undefined;
 		this.promote(item);
 		return item.value;
 	}
 	
+	getMeta(key) {
+		// fetch key and return internal cache wrapper object
+		// will contain any metadata user added when key was set
+		// (this still moves object to front of list)
+		var item = this.items[key];
+		if (!item) return undefined;
+		this.promote(item);
+		return item;
+	}
+	
 	delete(key) {
 		// remove key from cache
-		if (!this.has(key)) return false;
-		
 		var item = this.items[key];
+		if (!item) return false;
+		
 		this.bytes -= item.value.length || 0;
 		this.count--;
 		delete this.items[key];
@@ -117,6 +133,29 @@ class Cache extends EventEmitter {
 			this.first = item;
 			if (!this.last) this.last = item;
 		}
+	}
+	
+	getStats() {
+		// return general stats for cache
+		var stats = {
+			count: this.count,
+			bytes: this.bytes
+		};
+		
+		// guess rough percentage of cache fullness
+		var pct_count = this.maxItems ? ((this.count / this.maxItems) * 100) : 0;
+		var pct_bytes = this.maxBytes ? ((this.bytes / this.maxBytes) * 100) : 0;
+		stats.full = '' + Math.floor( Math.max(pct_count, pct_bytes) ) + '%';
+		
+		// include 10 hottest keys
+		stats.hotKeys = [];
+		var item = this.first;
+		while (item && (stats.hotKeys.length < 10)) {
+			stats.hotKeys.push( item.key );
+			item = item.next;
+		}
+		
+		return stats;
 	}
 	
 }
