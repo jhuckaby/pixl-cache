@@ -38,6 +38,53 @@ exports.tests = [
 		test.done();
 	},
 	
+	function advanced(test) {
+		// try non-string values
+		var value;
+		var cache = new Cache();
+		
+		cache.set( 'key1', 12345 );
+		value = cache.get('key1');
+		test.ok( value === 12345, "Number value is incorrect: " + value );
+		
+		cache.set( 'key1z', 0 );
+		value = cache.get('key1z');
+		test.ok( value === 0, "Number value is incorrect: " + value );
+		
+		cache.set( 'key2', true );
+		value = cache.get('key2');
+		test.ok( value === true, "Boolean value is incorrect: " + value );
+		
+		cache.set( 'key2f', false );
+		value = cache.get('key2f');
+		test.ok( value === false, "Boolean value is incorrect: " + value );
+		
+		cache.set( 'key3', Buffer.alloc(10) );
+		value = cache.get('key3');
+		test.ok( !!value.fill, "Value is not a buffer: " + value );
+		test.ok( value.length == 10, "Buffer length is incorrect: " + value.length );
+		
+		// must pass length metadata for null value
+		cache.set( 'key4', null, { length: 1 } );
+		value = cache.get('key4');
+		test.ok( value === null, "Null value is incorrect: " + value );
+		
+		// must pass length metadata for undefined value
+		cache.set( 'key4u', undefined, { length: 1 } );
+		value = cache.get('key4u');
+		test.ok( value === undefined, "Undefined value is incorrect: " + value );
+		
+		cache.set( 'key5', function() {} );
+		value = cache.get('key5');
+		test.ok( typeof(value) == 'function', "Function value is incorrect: " + value );
+		
+		cache.set( 'key6', { foo: 'bar' } );
+		value = cache.get('key6');
+		test.ok( typeof(value) == 'object', "Object value is incorrect: " + value );
+		
+		test.done();
+	},
+	
 	function metadata(test) {
 		// store object with metadata
 		var item;
@@ -62,6 +109,13 @@ exports.tests = [
 		test.ok( !!item, "Failed to fetch meta for key1 after update" );
 		test.ok( item.key === "key1", "Incorrect key for meta fetch after update: " + item.key );
 		test.ok( item.joe === 12346, "Missing metadata in object after update" );
+		
+		test.ok( cache.bytes == 6, "Incorrect total bytes: " + cache.bytes );
+		
+		// add key with custom length in metadata
+		cache.set( 'key2', 'value3', { length: 1000 } );
+		
+		test.ok( cache.bytes == 1006, "Incorrect total bytes after custom metadata length: " + cache.bytes );
 		
 		test.done();
 	},

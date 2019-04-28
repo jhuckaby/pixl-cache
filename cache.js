@@ -35,12 +35,13 @@ class Cache extends EventEmitter {
 		// either way, move item to head of list
 		// run maintenance after
 		var item = this.items[key];
+		if (!meta) meta = {};
 		
 		if (item) {
 			// replace existing
-			this.bytes -= item.value.length || 0;
+			this.bytes -= item.length || item.value.length || 0;
 			item.value = value;
-			this.bytes += value.length || 0;
+			this.bytes += meta.length || value.length || 0;
 		}
 		else {
 			// add new
@@ -50,14 +51,12 @@ class Cache extends EventEmitter {
 				prev: null, 
 				next: null 
 			};
-			this.bytes += value.length || 0;
+			this.bytes += meta.length || value.length || 0;
 			this.count++;
 		}
 		
 		// import optional metadata
-		if (meta) {
-			for (var mkey in meta) item[mkey] = meta[mkey];
-		}
+		for (var mkey in meta) item[mkey] = meta[mkey];
 		
 		// promote to front of list
 		this.promote(item);

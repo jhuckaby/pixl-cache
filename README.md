@@ -5,6 +5,7 @@
 	* [Features](#features)
 	* [Benchmarks](#benchmarks)
 - [Usage](#usage)
+	* [Overflow](#overflow)
 - [API](#api)
 	* [constructor](#constructor)
 	* [set](#set)
@@ -56,7 +57,7 @@ Read and write 1,000,000 keys (shorter times are better):
 | [fast-lru](https://github.com/playgroundtheory/fast-lru) | v3.0.1 | 5816 ms | 149 ms | 142.1 MB |
 | [lru-cache](https://github.com/isaacs/node-lru-cache) | v5.1.1 | 5263 ms | 62 ms | 140.7 MB | 
 | [node-cache](https://github.com/mpneuried/nodecache) | v3.1.0 | 6097 ms | 713 ms | 221.5 MB |
-| [pixl-cache](https://github.com/jhuckaby/pixl-cache) | v1.0.0 | 4253 ms | 37 ms | 128.1 MB |
+| [pixl-cache](https://github.com/jhuckaby/pixl-cache) | v1.0.4 | 4253 ms | 37 ms | 128.1 MB |
 
 Tests performed on a MacBook Pro 2016 (2.9 GHz Intel Core i7) with Node v10.14.1.
 
@@ -72,14 +73,44 @@ Here is a simple usage example:
 
 ```js
 const LRU = require('pixl-cache');
-const cache = new LRU({ maxItems: 10 });
+var cache = new LRU({ maxItems: 10 });
 
-cache.set( 'key1', "Value 1" );
-cache.set( 'key2', { complex: { item: 1234 } } );
+cache.set( 'key1', "Simple String" );
+cache.set( 'key2', Buffer.alloc(10) );
+cache.set( 'key3', { complex: { item: 1234 } } );
+cache.set( 'key4', true );
 
 var value = cache.get( 'key1' );
 cache.delete( 'key2' );
 ```
+
+## Overflow
+
+pixl-cache can handle overflow in two different ways: by enforcing a maximum number of items, and/or a maximum number of bytes.  When either of these limits are exceeded, the least recently used object(s) will be expunged.  These limits can be passed to the class constructor like so:
+
+```js
+var cache = new LRU({ 
+	maxItems: 1000, 
+	maxBytes: 1048576
+});
+```
+
+This would allow up to 1,000 items or 1 MB of total value length, whichever is reached first.  When using `maxBytes` the cache needs to calculate the size of your objects.  By default, it does this simply by counting the `length` property of your values passed to `set()`.  If you use strings or buffers, this is automatic:
+
+```js
+cache.set( 'key1', "ABCDEFGHIJ" ); // length 10
+cache.set( 'key2', Buffer.alloc(10) ); // length 10
+```
+
+Both of these would add 10 to the total byte weight.  However, you may want to specify your own custom length, especially if you are storing objects or other non-string non-buffer values.  Also, it should be pointed out that string length is **not** byte length (strings are internally represented as 16-bit in Node.js, so it's basically double).  Suffice to say, you may want to specify your own custom lengths.
+
+To do this, pass a metadata object to `set()` as the 3rd argument, and include an explicit `length` property therein:
+
+```js
+cache.set( 'key1', "ABCDEFGHIJ", { length: 20 } );
+```
+
+This would record the length of the record as 20 bytes.
 
 # API
 
@@ -87,19 +118,17 @@ cache.delete( 'key2' );
 
 ```js
 const LRU = require('pixl-cache');
-const cache = new LRU();
+var cache = new LRU();
 ```
 
 The constructor creates a cache instance.  You can optionally pass an object containing any of these properties:
 
 | Property | Default | Description |
 |----------|---------|-------------|
-| `maxItems` | `0` | Specifies the maximum number of objects allowed in the cache, before it starts expiring the least recently used. |
-| `maxBytes` | `0` | Specifies the maximum value bytes allowed in the cache, before it starts expiring the least recently used. |
+| `maxItems` | `0` | Specifies the maximum number of objects allowed in the cache, before it starts expunging the least recently used. |
+| `maxBytes` | `0` | Specifies the maximum value bytes allowed in the cache, before it starts expunging the least recently used. |
 
 If you omit either property, they default to `0` which is infinite.  If both are specified, whichever one kicks in first will expire keys.
-
-Note that if you set a non-zero `maxBytes` to govern the maximum bytes in the cache, your values are expected to have a `length` property (Strings or Buffers are fine).  Anything without a `length` property is assumed to have a length of 0, and doesn't increment the total byte count.
 
 ## set
 
@@ -109,21 +138,21 @@ cache.set( 'key1', "Value 1" );
 
 The `set()` method adds or replaces a single object in the cache, given a key and value.  The key is assumed to be a string, but the value can be anything.  Anytime an object is added or replaced, it becomes the most recently used.
 
-Note that the `maxBytes` governor only works with values that have a `length` property (namely Strings and Buffers).  Anything else is assumed to have a length of 0, and will not affect the total byte count.
-
 Adding new keys may cause the least recently used object(s) to be expired from the cache.
 
-You can optionally pass an object containing arbitrary metadata as the 3rd argument to `set()`.  This is stored in the cache item, and does not add to the total byte count.  Example:
+You can optionally pass an object containing arbitrary metadata as the 3rd argument to `set()`.  This is stored in the internal cache database, and does not add to the total byte count.  Example:
 
 ```js
 cache.set( 'key1', "Value 1", { mydate: Date.now() } );
 ```
 
-Please make sure your metadata object does *not* include the following four keys: `key`, `value`, `next` or `prev`.  Those are for internal cache use.
+Please make sure your metadata object does *not* include the following four keys: `key`, `value`, `next` or `prev`.  Those are for internal cache use.  You can, however, include a `length` key in the metadata object, which overrides the default length calculation for the object.
 
-Subsequent calls to `set()` replacing a key with differing metadata is shallow-merged in.  If a subsequent call omits metadata entirely, it is preserved.
+Subsequent calls to `set()` replacing a key with differing metadata is shallow-merged.  If a subsequent call omits metadata entirely, the original data is preserved.
 
 You can use [getMeta()](#getmeta) to retrieve cache objects including your metadata.
+
+Note that if you want to store either `null` or `undefined` as cache values, you *must* specify a non-zero `length` in the metadata object.  Otherwise pixl-cache will throw an exception trying to compute the length.
 
 ## get
 
@@ -133,7 +162,7 @@ var value = cache.get( 'key1' );
 
 The `get()` method fetches a value given a key.  If the key is not found in the cache the return value will be `undefined`.  Note that when fetching any key, that object becomes the most recently used.
 
-Fetching keys will never cause any object to be expired from the cache.
+Fetching keys will never cause any object to be expunged from the cache.
 
 ## getMeta
 
@@ -246,8 +275,6 @@ The `count` property contains the current total key count in the cache.
 ### bytes
 
 The `bytes` property contains the current total byte count in the cache.
-
-Note that if you use strings for values, the string `length` is calculated as the byte count.  This is not technically correct, due to how strings are internally represented in JavaScript as 16-bit.  If you want to use string values but set an exact maximum in bytes you may want to halve your `maxBytes` value.
 
 # Development
 

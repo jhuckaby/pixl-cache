@@ -9,6 +9,6 @@
   "author": "",
   "dependencies": {
     "node-cache": "^3.1.0",
-    "uuid": "^2.0.1"
+    "uuid": "^3.3.2"
   }
 }

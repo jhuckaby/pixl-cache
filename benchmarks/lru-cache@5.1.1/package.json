@@ -9,6 +9,6 @@
   "author": "",
   "dependencies": {
     "lru-cache": "^5.1.1",
-    "uuid": "^2.0.1"
+    "uuid": "^3.3.2"
   }
 }
