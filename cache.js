@@ -9,13 +9,19 @@ class Cache extends EventEmitter {
 	
 	constructor(opts) {
 		// class constructor
-		// opts: { maxItems, maxBytes }
+		// opts: { maxItems, maxBytes, maxAge }
 		super();
+		
+		// defaults
 		this.maxItems = 0;
 		this.maxBytes = 0;
+		this.maxAge = 0;
+		
+		// user overrides
 		if (opts) {
 			for (var key in opts) this[key] = opts[key];
 		}
+	
 		this.clear();
 	}
 	
@@ -55,6 +61,9 @@ class Cache extends EventEmitter {
 			this.count++;
 		}
 		
+		// set expiration if maxAge is set
+		if (this.maxAge) item.expires = (Date.now() / 1000) + this.maxAge;
+		
 		// import optional metadata
 		for (var mkey in meta) item[mkey] = meta[mkey];
 		
@@ -79,6 +88,11 @@ class Cache extends EventEmitter {
 		// move object to head of list
 		var item = this.items[key];
 		if (!item) return undefined;
+		if (item.expires && (Date.now() / 1000 >= item.expires)) {
+			this.emit( 'expire', item, 'age' );
+			this.delete( key );
+			return undefined;
+		}
 		this.promote(item);
 		return item.value;
 	}
@@ -89,6 +103,11 @@ class Cache extends EventEmitter {
 		// (this still moves object to front of list)
 		var item = this.items[key];
 		if (!item) return undefined;
+		if (item.expires && (Date.now() / 1000 >= item.expires)) {
+			this.emit( 'expire', item, 'age' );
+			this.delete( key );
+			return undefined;
+		}
 		this.promote(item);
 		return item;
 	}
@@ -114,7 +133,12 @@ class Cache extends EventEmitter {
 	has(key) {
 		// return true if key is present in cache
 		// (do not change order)
-		return( key in this.items );
+		var item = this.items[key];
+		if (!item) return false;
+		if (item.expires && (Date.now() / 1000 >= item.expires)) {
+			return false;
+		}
+		return true;
 	}
 	
 	promote(item) {

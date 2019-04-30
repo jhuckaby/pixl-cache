@@ -6,6 +6,7 @@
 	* [Benchmarks](#benchmarks)
 - [Usage](#usage)
 	* [Overflow](#overflow)
+	* [Expiration](#expiration)
 - [API](#api)
 	* [constructor](#constructor)
 	* [set](#set)
@@ -32,7 +33,7 @@
 
 **pixl-cache** is a very simple LRU (Least Recently Used) cache module for Node.js.  It works like a hash map with `set()` and `get()` methods, but when it detects an overflow (configurable by total keys or total bytes) it automatically expunges the least recently accessed objects from the cache.  It is fast, stable, and has no dependencies.
 
-Internally the cache is implemented as a combination of a hash and a double-linked list.  When items are accessed (added, replaced or fetched) they are promoted to the front of the linked list.  When the max size (keys or bytes) is exceeded, items are dropped from the back of the list.
+Internally the cache is implemented as a combination of a hash and a double-linked list.  When items are accessed (added, replaced or fetched) they are promoted to the front of the linked list.  When the max size (keys or bytes) is exceeded, items are dropped from the back of the list.  Items can also have an optional max age (i.e. expiration date).
 
 ## Features
 
@@ -41,8 +42,9 @@ Internally the cache is implemented as a combination of a hash and a double-link
 - Low memory overhead
 - Predictable results on overflow
 - Can expire based on key count or byte count
-- Event listener for expired keys
-- Can store metadata along with cache objects
+- Optional expiration date for items
+- Event listener for ejecting expired items
+- Can store custom metadata along with cache objects
 - No dependencies
 
 ## Benchmarks
@@ -69,19 +71,44 @@ Use [npm](https://www.npmjs.com/) to install the module:
 npm install pixl-cache
 ```
 
-Here is a simple usage example:
+Here is a simple usage example, enforcing 5 max items:
 
 ```js
 const LRU = require('pixl-cache');
-var cache = new LRU({ maxItems: 10 });
+var cache = new LRU({ maxItems: 5 });
 
 cache.set( 'key1', "Simple String" );
 cache.set( 'key2', Buffer.alloc(10) );
 cache.set( 'key3', { complex: { item: 1234 } } );
 cache.set( 'key4', true );
+cache.set( 'key5', "Cache is full now" );
+cache.set( 'key6', "Oops, key1 is gone now");
 
 var value = cache.get( 'key1' );
-cache.delete( 'key2' );
+// value === undefined (key1 got expunged)
+
+cache.delete( 'key2' ); // manual delete
+
+if (cache.has('key3')) {
+	// check if key exists (true)
+}
+
+cache.clear(); // wipe entire cache
+```
+
+Instead of setting a maximum item count, you can set a total byte count:
+
+```js
+var cache = new LRU({ maxBytes: 1024 * 1024 }); // 1 MB
+cache.set( 'key1', Buffer.alloc(1024 * 512) ); // 50% full here
+cache.set( 'key2', Buffer.alloc(1024 * 256) ); // 75% full here
+```
+
+Or expire objects by their age in the cache:
+
+```js
+var cache = new LRU({ maxAge: 86400 }); // 24 hours
+cache.set( 'key1', "Expires tomorrow!" );
 ```
 
 ## Overflow
@@ -102,7 +129,7 @@ cache.set( 'key1', "ABCDEFGHIJ" ); // length 10
 cache.set( 'key2', Buffer.alloc(10) ); // length 10
 ```
 
-Both of these would add 10 to the total byte weight.  However, you may want to specify your own custom length, especially if you are storing objects or other non-string non-buffer values.  Also, it should be pointed out that string length is **not** byte length (strings are internally represented as 16-bit in Node.js, so it's basically double).  Suffice to say, you may want to specify your own custom lengths.
+Both of these values would add 10 to the total byte weight.  However, you may want to specify your own custom lengths, especially if you are storing objects or other non-string non-buffer values.  Also, it should be pointed out that string length is **not** byte length (strings are internally represented as 16-bit in Node.js, so they're basically double size).  Suffice to say, you may want to specify your own custom lengths.
 
 To do this, pass a metadata object to `set()` as the 3rd argument, and include an explicit `length` property therein:
 
@@ -110,7 +137,26 @@ To do this, pass a metadata object to `set()` as the 3rd argument, and include a
 cache.set( 'key1', "ABCDEFGHIJ", { length: 20 } );
 ```
 
-This would record the length of the record as 20 bytes.
+This would record the length of the value as 20 bytes.
+
+## Expiration
+
+In addition to expiring the least recently used objects when the cache is full, objects can also expire based on age.  You can specify a `maxAge` configuration property when constructing your cache:
+
+```js
+var cache = new LRU({ maxAge: 86400 }); // 24 hours
+```
+
+And in this case all items added to the cache will be expired after 24 hours.  Replacing existing items resets their age clock.  Each item has its own internal expiration date, and if that date comes to pass, fetching the item will immediately cause it to be deleted, and return `undefined`.  Note that items are not "actively deleted" based on an interval timer, but rather expired items delete themselves on fetch (or may be expunged for other reasons, i.e. `maxItems` and/or `maxBytes`).
+
+You can specify a custom expiration date for your items individually, by passing a metadata object to `set()` as the 3rd argument, and including an explicit `expires` property therein:
+
+```js
+var someFutureDate = ( Date.now() / 1000 ) + 86400; // 24 hours from now
+cache.set( 'key1', "ABCDEFGHIJ", { expires: someFutureDate } );
+```
+
+The `expires` property needs to be an Epoch timestamp, as shown above.  You do not need to enable `maxAge` in order to use the custom `expires` property.  It works with any combination of configuration options, and overrides `maxAge` if it is also set.  If you set an `expires` date in the past, the key is immediately deleted upon the next fetch.
 
 # API
 
@@ -127,8 +173,17 @@ The constructor creates a cache instance.  You can optionally pass an object con
 |----------|---------|-------------|
 | `maxItems` | `0` | Specifies the maximum number of objects allowed in the cache, before it starts expunging the least recently used. |
 | `maxBytes` | `0` | Specifies the maximum value bytes allowed in the cache, before it starts expunging the least recently used. |
+| `maxAge` | `0` | Specifies the default maximum age in seconds for all keys added to the cache, before they are deleted on fetch. |
 
-If you omit either property, they default to `0` which is infinite.  If both are specified, whichever one kicks in first will expire keys.
+The default of `0` means infinite.  If multiple configuration properties are specified, whichever one kicks in first will expire keys.  Here is an example with all properties set:
+
+```js
+var cache = new LRU({
+	maxItems: 1000,
+	maxBytes: 1048576, // 1 MB
+	maxAge: 86400 // 24 hours
+});
+```
 
 ## set
 
@@ -143,10 +198,10 @@ Adding new keys may cause the least recently used object(s) to be expired from t
 You can optionally pass an object containing arbitrary metadata as the 3rd argument to `set()`.  This is stored in the internal cache database, and does not add to the total byte count.  Example:
 
 ```js
-cache.set( 'key1', "Value 1", { mydate: Date.now() } );
+cache.set( 'key1', "Value 1", { mytag: "frog" } );
 ```
 
-Please make sure your metadata object does *not* include the following four keys: `key`, `value`, `next` or `prev`.  Those are for internal cache use.  You can, however, include a `length` key in the metadata object, which overrides the default length calculation for the object.
+Please make sure your metadata object does *not* include the following four keys: `key`, `value`, `next` or `prev`.  Those are for internal cache use.  You can, however, include a `length` key in the metadata object, which overrides the default length calculation for the object, and/or an `expires` key, which sets the expiration date for the key (Epoch timestamp).
 
 Subsequent calls to `set()` replacing a key with differing metadata is shallow-merged.  If a subsequent call omits metadata entirely, the original data is preserved.
 
@@ -160,33 +215,42 @@ Note that if you want to store either `null` or `undefined` as cache values, you
 var value = cache.get( 'key1' );
 ```
 
-The `get()` method fetches a value given a key.  If the key is not found in the cache the return value will be `undefined`.  Note that when fetching any key, that object becomes the most recently used.
+The `get()` method fetches a value given a key.  If the key is not found in the cache (or it exists but is expired) the return value will be `undefined`.  Note that when fetching any key, that object becomes the most recently used.
 
-Fetching keys will never cause any object to be expunged from the cache.
+If the item is fetched on or after its expiration date (i.e. when using `maxAge` or setting an explicit date), it will be deleted, and the call will return `undefined`.
 
 ## getMeta
 
 ```js
 var item = cache.getMeta( 'key1' );
-var mydate = item.mydate; // custom metadata
+var mytag = item.mytag; // custom metadata
 ```
 
-The `getMeta()` method fetches the internal cache object wrapper given its key, which includes any metadata you may have specified when you called `set()`.  The object will always have the following keys, along with your metadata merged in:
+The `getMeta()` method fetches the internal cache object wrapper given its key, which includes any metadata you may have specified when you called `set()`.  The object will always have the following properties, along with your metadata merged in:
 
 | Key | Description |
 |-----|-------------|
-| `key` | The cache object key, as passed to `set()`. |
-| `value` | The cache object value, pas passed to `set()` and returned by `get()`. |
+| `key` | The raw cache object key, as passed to `set()`. |
+| `value` | The raw cache object value, as passed to `set()` and returned by `get()`. |
 | `next` | A pointer to the *next* cache object in the linked list.  Please do not touch. |
 | `prev` | A pointer to the *previous* cache object in the linked list.  Please do not touch. |
+
+The metadata object may also have one or both of these additional properties:
+
+| Key | Description |
+|-----|-------------|
+| `length` | The length of the object's `value`, if it was provided explicitly when `set()` was called. |
+| `expires` | The expiration date of the object as an Epoch timestamp, if the `maxAge` configuration property is set, or a custom `expires` was provided when `set()` was called. |
 
 ## has
 
 ```js
-if (cache.has('key1')) console.log("YES!");
+if (cache.has('key1')) console.log("key1 is present!");
 ```
 
 The `has()` method checks if a specified key exists in the cache, and returns `true` or `false`.  This does **not** cause the object to get promoted to the most recently used.  It is more of a "peek".
+
+Note that if a cache object is technically still present but expired, the return value of this call will be `false`.  This is because the item is "effectively" deleted at this point (i.e. it can no longer be fetched), so we properly represent what would happen if you tried to call `get()` after calling `has()`.
 
 ## delete
 
@@ -194,7 +258,7 @@ The `has()` method checks if a specified key exists in the cache, and returns `t
 cache.delete( 'key1' );
 ```
 
-The `delete()` method deletes the specified key from the cache.  If successful, this returns `true`.  If the key was not found it returns `false`.
+The `delete()` method deletes the specified key from the cache.  If successful, this returns `true`.  If the key was not found it returns `false`.  This will return `true` (success) for deleting expired keys.
 
 ## clear
 
@@ -202,7 +266,7 @@ The `delete()` method deletes the specified key from the cache.  If successful, 
 cache.clear();
 ```
 
-The `clear()` method clears the **entire** cache, deleting all keys.  It does not reset any configuration properties.
+The `clear()` method clears the **entire** cache, deleting all objects.  It does not reset any configuration properties, however.
 
 ## getStats
 
@@ -218,16 +282,16 @@ The `getStats()` method returns an object containing some basic statistics about
 	"bytes": 15098,
 	"full": "15.8%",
 	"hotKeys": [
-		"index/ontrack/_data/2665",
-		"index/ontrack/_data/2664",
-		"index/ontrack/_data/2663",
-		"index/ontrack/_data/2662",
-		"index/ontrack/_data/2661",
-		"index/ontrack/_data/2660",
-		"index/ontrack/_data/2659",
-		"index/ontrack/_data/2658",
-		"index/ontrack/_data/2657",
-		"index/ontrack/_data/2656"
+		"index/myapp/data/2665",
+		"index/myapp/data/2664",
+		"index/myapp/data/2663",
+		"index/myapp/data/2662",
+		"index/myapp/data/2661",
+		"index/myapp/data/2660",
+		"index/myapp/data/2659",
+		"index/myapp/data/2658",
+		"index/myapp/data/2657",
+		"index/myapp/data/2656"
 	]
 }
 ```
@@ -248,7 +312,7 @@ The following events are emitted:
 
 ### expire
 
-The `expire` event is emitted when the cache is about to expire the least recently used object, either due to total key count or byte count.  The event listener will be passed two arguments, the item being expired, and a reason:
+The `expire` event is emitted when the cache is about to expire the least recently used object, either due to total key count, byte count or age.  The event listener will be passed two arguments, the item being expired, and a reason:
 
 ```js
 cache.on( 'expire', function(item, reason) {
@@ -256,9 +320,9 @@ cache.on( 'expire', function(item, reason) {
 });
 ```
 
-The `item` is an object containing the original `key` and `value` as originally passed to `set()`, along with any custom metadata if applicable.  You can use this hook to persist data to disk, for example.
+The `item` is an object containing the original `key` and `value` as originally passed to `set()`, along with any custom metadata if applicable.  It is the same object that [getMeta()](#getmeta) returns.  You can use the `expire` hook to persist data to disk, for example.
 
-The `reason` will be either `count` (expired due to key count), or `bytes` (expired due to total byte count).  It is always a string.
+The `reason` will be either `count` (expired due to total key count), `bytes` (expired due to total byte count), or `age` (expired due to age).  It is always a string.
 
 ## Properties
 
@@ -285,6 +349,8 @@ git clone https://github.com/jhuckaby/pixl-cache.git
 cd pixl-cache
 npm install
 ```
+
+The `npm install` is only needed for running unit tests.
 
 ## Unit Tests
 

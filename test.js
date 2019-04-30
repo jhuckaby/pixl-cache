@@ -367,6 +367,46 @@ exports.tests = [
 		test.ok( !value, "Special key shuld be expunged, but is still here: " + value );
 		
 		test.done();
+	},
+	
+	function age(test) {
+		var idx, key, value, item, expires;
+		var cache = new Cache({ maxAge: 1 });
+		cache.set( 'aged', "AGED" );
+		
+		value = cache.get( 'aged' );
+		test.ok( value === "AGED", "Aged key has disappeared unexpectedly: " + value );
+		
+		item = cache.getMeta( 'aged' );
+		test.ok( !!item, "Aged key has disappeared unexpectedly: " + value );
+		test.ok( item.expires > Date.now()/1000, "Aged key has unexpected expiration: " + expires );
+		
+		expires = item.expires;
+		value = null;
+		
+		// make sure expires event fires for age ejection
+		var saw_expire_event = false;
+		cache.on('expire', function(item, reason) {
+			saw_expire_event = true;
+			test.ok( item.key === 'aged', "Unexpected key in expire event: " + item.key );
+			test.ok( reason === 'age', "Unexpected reason for expire event: " + reason );
+		});
+		
+		// fetch every 100ms until item expires
+		var timer = setInterval( function() {
+			value = cache.get( 'aged' );
+			if (item.expires <= Date.now()/1000) {
+				// TTL expired, item should be gone now
+				clearTimeout( timer );
+				test.ok( value === undefined, "Aged value expected to be undefined by now: " + value );
+				test.ok( saw_expire_event === true, "Did not see expire event after full second" );
+				test.done();
+			}
+			else {
+				// TTL still fresh
+				test.ok( value === "AGED", "Aged key has disappeared unexpectedly: " + value );
+			}
+		}, 100 );
 	}
-
+	
 ];
