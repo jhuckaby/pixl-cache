@@ -122,22 +122,24 @@ var cache = new LRU({
 });
 ```
 
-This would allow up to 1,000 items or 1 MB of total value length, whichever is reached first.  When using `maxBytes` the cache needs to calculate the size of your objects.  By default, it does this simply by counting the `length` property of your values passed to `set()`.  If you use strings or buffers, this is automatic:
+This would allow up to 1,000 items or 1 MB of total value length, whichever is reached first.  When using `maxBytes` the cache needs to calculate the size of your objects.  The byte size includes both the key and the value.  The process is automatic if you use simple primitive value types such as strings, buffers, numbers or booleans.  Examples:
 
 ```js
-cache.set( 'key1', "ABCDEFGHIJ" ); // length 10
-cache.set( 'key2', Buffer.alloc(10) ); // length 10
+cache.set( 'key1', "ABCDEFGHIJ" ); // 20 bytes + 8 for key
+cache.set( 'key2', Buffer.alloc(10) ); // 10 bytes + 8 for key
+cache.set( 'key3', 12345 ); // 8 bytes + 8 for key
+cache.set( 'key4', true ) ; // 4 bytes + 8 for key
 ```
 
-Both of these values would add 10 to the total byte weight.  However, you may want to specify your own custom lengths, especially if you are storing objects or other non-string non-buffer values.  Also, it should be pointed out that string length is **not** byte length (strings are internally represented as 16-bit in Node.js, so they're basically double size).  Suffice to say, you may want to specify your own custom lengths.
+Note that string length does **not** equal byte length.  This is because strings are internally represented as 16-bits (2 bytes) per character in Node.js, so they're basically double size.  That is why the 10-character string `ABCDEFGHIJ` is actually 20 bytes in memory.
 
-To do this, pass a metadata object to `set()` as the 3rd argument, and include an explicit `length` property therein:
+The byte length of *object* values is not automatically calculated.  Meaning, if you pass an object as a value, its byte count is read from a `length` property if it exists (i.e. for buffers), or if not found it defaults to `0`.  So, you may want to specify your own custom lengths in certain cases, especially if you are storing objects in the cache.  To do this, pass a metadata object to `set()` as the 3rd argument, and include an explicit `length` property therein:
 
 ```js
-cache.set( 'key1', "ABCDEFGHIJ", { length: 20 } );
+cache.set( 'key1', { "name": "Joe" }, { length: 200 } );
 ```
 
-This would record the length of the value as 20 bytes.
+This would record the length of the object value as 200 bytes.
 
 ## Expiration
 
@@ -239,7 +241,7 @@ The metadata object may also have one or both of these additional properties:
 
 | Key | Description |
 |-----|-------------|
-| `length` | The length of the object's `value`, if it was provided explicitly when `set()` was called. |
+| `length` | The length of the object's `value`, if it was provided explicitly when `set()` was called, or calculated automatically. |
 | `expires` | The expiration date of the object as an Epoch timestamp, if the `maxAge` configuration property is set, or a custom `expires` was provided when `set()` was called. |
 
 ## has

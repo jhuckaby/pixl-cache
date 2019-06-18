@@ -43,6 +43,14 @@ class Cache extends EventEmitter {
 		var item = this.items[key];
 		if (!meta) meta = {};
 		
+		if (!("length" in meta)) {
+			switch (typeof(value)) {
+				case 'number': meta.length = 8; break; // numbers are 64-bit
+				case 'boolean': meta.length = 4; break; // bools are 32-bit
+				case 'string': meta.length = value.length * 2; break; // strings are 16-bit per char
+			}
+		}
+		
 		if (item) {
 			// replace existing
 			this.bytes -= item.length || item.value.length || 0;
@@ -57,7 +65,7 @@ class Cache extends EventEmitter {
 				prev: null, 
 				next: null 
 			};
-			this.bytes += meta.length || value.length || 0;
+			this.bytes += (key.length * 2) + (meta.length || value.length || 0);
 			this.count++;
 		}
 		
@@ -117,7 +125,7 @@ class Cache extends EventEmitter {
 		var item = this.items[key];
 		if (!item) return false;
 		
-		this.bytes -= item.value.length || 0;
+		this.bytes -= (key.length * 2) + (item.length || item.value.length || 0);
 		this.count--;
 		delete this.items[key];
 		

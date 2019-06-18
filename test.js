@@ -11,14 +11,14 @@ exports.tests = [
 		
 		test.ok( value === "value1", "Value for key1 is not correct: " + value );
 		test.ok( cache.count == 1, "Cache has incorrect number of keys: " + cache.count );
-		test.ok( cache.bytes == value.length, "Cache has incorrect number of bytes: " + cache.bytes );
+		test.ok( cache.bytes == 20, "Cache has incorrect number of bytes: " + cache.bytes );
 		
 		cache.set( 'key1', 'value12345' );
 		value = cache.get('key1');
 		
 		test.ok( value === "value12345", "Value for key1 is not correct after replace: " + value );
 		test.ok( cache.count == 1, "Cache has incorrect number of keys after replace: " + cache.count );
-		test.ok( cache.bytes == value.length, "Cache has incorrect number of bytes after replace: " + cache.bytes );
+		test.ok( cache.bytes == 28, "Cache has incorrect number of bytes after replace: " + cache.bytes );
 		
 		cache.delete( 'key1' );
 		value = cache.get('key1');
@@ -85,6 +85,40 @@ exports.tests = [
 		test.done();
 	},
 	
+	function sizes(test) {
+		// test javascript native size calculation
+		var cache = new Cache();
+		
+		// test key = 2 bytes
+		
+		// number (8 bytes)
+		cache.set( 'A', 1 );
+		test.ok( cache.bytes == 10, "Cache has incorrect bytes for num: " + cache.bytes );
+		cache.clear();
+		
+		// boolean (4 bytes)
+		cache.set( 'A', true );
+		test.ok( cache.bytes == 6, "Cache has incorrect bytes for bool: " + cache.bytes );
+		cache.clear();
+		
+		// string (2 bytes per char)
+		cache.set( 'A', "1" );
+		test.ok( cache.bytes == 4, "Cache has incorrect bytes for string: " + cache.bytes );
+		cache.clear();
+		
+		// buffer
+		cache.set( 'A', Buffer.alloc(100) );
+		test.ok( cache.bytes == 102, "Cache has incorrect bytes for buffer: " + cache.bytes );
+		cache.clear();
+		
+		// object (0 bytes unless specified)
+		cache.set( 'A', { "not": "counted" } );
+		test.ok( cache.bytes == 2, "Cache has incorrect bytes for object: " + cache.bytes );
+		cache.clear();
+		
+		test.done();
+	},
+	
 	function metadata(test) {
 		// store object with metadata
 		var item;
@@ -110,12 +144,12 @@ exports.tests = [
 		test.ok( item.key === "key1", "Incorrect key for meta fetch after update: " + item.key );
 		test.ok( item.joe === 12346, "Missing metadata in object after update" );
 		
-		test.ok( cache.bytes == 6, "Incorrect total bytes: " + cache.bytes );
+		test.ok( cache.bytes == 20, "Incorrect total bytes: " + cache.bytes );
 		
 		// add key with custom length in metadata
 		cache.set( 'key2', 'value3', { length: 1000 } );
 		
-		test.ok( cache.bytes == 1006, "Incorrect total bytes after custom metadata length: " + cache.bytes );
+		test.ok( cache.bytes == 1028, "Incorrect total bytes after custom metadata length: " + cache.bytes );
 		
 		test.done();
 	},
@@ -192,7 +226,7 @@ exports.tests = [
 	
 	function fillBytes(test) {
 		var idx, key, value, item;
-		var cache = new Cache({ maxBytes: 100 });
+		var cache = new Cache({ maxBytes: 282 });
 		cache.on('expire', function(item, reason) {
 			test.ok( false, "Expire event fired unexpectedly: " + item.key + " for " + reason );
 		});
@@ -207,64 +241,66 @@ exports.tests = [
 		}
 		
 		test.ok( cache.count == 10, "Cache has incorrect count: " + cache.count );
-		test.ok( cache.bytes == 100, "Cache has incorrect bytes: " + cache.bytes );
+		test.ok( cache.bytes == 282, "Cache has incorrect bytes: " + cache.bytes );
 		test.done();
 	},
 	
 	function overflowBytes(test) {
 		var idx, key, value, item;
-		var cache = new Cache({ maxBytes: 100 });
+		var cache = new Cache({ maxBytes: 300 });
 		
 		test.expect( 13 );
 		
 		cache.on('expire', function(item, reason) {
-			test.ok( item.key == "key1", "Expired key is incorrect: " + item.key );
+			test.ok( item.key == "key11", "Expired key is incorrect: " + item.key );
 			test.ok( reason == "bytes", "Expired reason is incorrect: " + reason );
 		});
 		
-		for (idx = 1; idx <= 11; idx++) {
+		for (idx = 11; idx <= 21; idx++) {
 			cache.set( 'key' + idx, 'ABCDEFGHIJ' );
 		}
 		
-		for (idx = 2; idx <= 11; idx++) {
+		for (idx = 12; idx <= 21; idx++) {
 			value = cache.get( 'key' + idx );
 			test.ok( value === 'ABCDEFGHIJ', "Cache key key" + idx + " has incorrect value: " + value );
 		}
 		
-		value = cache.get( 'key1' );
-		test.ok( !value, "Expected null, got actual value for key1: " + value );
+		value = cache.get( 'key11' );
+		test.ok( !value, "Expected null, got actual value for key11: " + value );
 		test.done();
 	},
 	
 	function overflowBytesMultiple(test) {
 		var idx, key, value, item;
-		var cache = new Cache({ maxBytes: 100 });
+		var cache = new Cache({ maxBytes: 300 });
 		
-		for (idx = 1; idx <= 10; idx++) {
+		for (idx = 11; idx <= 20; idx++) {
 			cache.set( 'key' + idx, 'ABCDEFGHIJ' );
 		}
-		for (idx = 1; idx <= 10; idx++) {
+		for (idx = 11; idx <= 20; idx++) {
 			value = cache.get( 'key' + idx );
 			test.ok( value === 'ABCDEFGHIJ', "Cache key key" + idx + " has incorrect value: " + value );
 		}
 		
 		// cause everything to be expunged at once and replaced with boom
-		var buf = Buffer.alloc(100);
+		// (292 byte buf + `boom` key == 300 bytes exactly)
+		var buf = Buffer.alloc(292);
 		cache.set( 'boom', buf );
 		
 		value = cache.get('boom');
 		test.ok( !!value, "Unable to fetch boom");
-		test.ok( value.length == 100, "Boom has incorrect length: " + value.length );
+		test.ok( value.length == 292, "Boom has incorrect length: " + value.length );
 		
 		test.ok( cache.count == 1, "Cache has incorrect count after boom: " + cache.count );
-		test.ok( cache.bytes == 100, "Cache has incorrect bytes after boom: " + cache.bytes );
+		test.ok( cache.bytes == 300, "Cache has incorrect bytes after boom: " + cache.bytes );
 		
 		// internal API checks
 		test.ok( cache.first.key === "boom", "First list item is not boom: " + cache.first.key );
 		test.ok( cache.last.key === "boom", "First last item is not boom: " + cache.last.key );
 		
-		// now cause an implosion (cannot store key > 100 bytes, will immediately be expunged)
-		var buf2 = Buffer.alloc(101);
+		// now cause an implosion (cannot store > 300 bytes, will immediately be expunged)
+		// (287 byte buf + `implode` key == 301 bytes exactly)
+		var buf2 = Buffer.alloc(287);
 		cache.set( 'implode', buf2 );
 		
 		value = cache.get('implode');
