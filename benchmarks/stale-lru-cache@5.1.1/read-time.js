@@ -1,6 +1,8 @@
 var time = process.hrtime;
 var uuid = require('uuid');
-var cache = require('../../')();
+
+var Cache = require('stale-lru-cache');
+var cache = new Cache();
 
 for (var i = 0; i < 1000; i++) {
     cache.set(i, { key: i, value: uuid.v4() });

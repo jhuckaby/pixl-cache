@@ -1,6 +1,8 @@
 var time = process.hrtime;
 var uuid = require('uuid');
-var cache = require('../../')({
+
+var Cache = require('stale-lru-cache');
+var cache = new Cache({
     max: 1e5,
     length: function() { return 1; }
 });
