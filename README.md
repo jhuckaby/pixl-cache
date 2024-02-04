@@ -75,7 +75,7 @@ Here is a simple usage example, enforcing 5 max items:
 
 ```js
 const LRU = require('pixl-cache');
-var cache = new LRU({ maxItems: 5 });
+let cache = new LRU({ maxItems: 5 });
 
 cache.set( 'key1', "Simple String" );
 cache.set( 'key2', Buffer.alloc(10) );
@@ -84,7 +84,7 @@ cache.set( 'key4', true );
 cache.set( 'key5', "Cache is full now" );
 cache.set( 'key6', "Oops, key1 is gone now");
 
-var value = cache.get( 'key1' );
+let value = cache.get( 'key1' );
 // value === undefined (key1 got expunged)
 
 cache.delete( 'key2' ); // manual delete
@@ -99,7 +99,7 @@ cache.clear(); // wipe entire cache
 Instead of setting a maximum item count, you can set a total byte count:
 
 ```js
-var cache = new LRU({ maxBytes: 1024 * 1024 }); // 1 MB
+let cache = new LRU({ maxBytes: 1024 * 1024 }); // 1 MB
 cache.set( 'key1', Buffer.alloc(1024 * 512) ); // 50% full here
 cache.set( 'key2', Buffer.alloc(1024 * 256) ); // 75% full here
 ```
@@ -107,7 +107,7 @@ cache.set( 'key2', Buffer.alloc(1024 * 256) ); // 75% full here
 Or expire objects by their age in the cache:
 
 ```js
-var cache = new LRU({ maxAge: 86400 }); // 24 hours
+let cache = new LRU({ maxAge: 86400 }); // 24 hours
 cache.set( 'key1', "Expires tomorrow!" );
 ```
 
@@ -116,7 +116,7 @@ cache.set( 'key1', "Expires tomorrow!" );
 pixl-cache can handle overflow in two different ways: by enforcing a maximum number of items, and/or a maximum number of bytes.  When either of these limits are exceeded, the least recently used object(s) will be expunged.  These limits can be passed to the class constructor like so:
 
 ```js
-var cache = new LRU({ 
+let cache = new LRU({ 
 	maxItems: 1000, 
 	maxBytes: 1048576
 });
@@ -146,7 +146,7 @@ This would record the length of the object value as 200 bytes.
 In addition to expiring the least recently used objects when the cache is full, objects can also expire based on age.  You can specify a `maxAge` configuration property when constructing your cache:
 
 ```js
-var cache = new LRU({ maxAge: 86400 }); // 24 hours
+let cache = new LRU({ maxAge: 86400 }); // 24 hours
 ```
 
 And in this case all items added to the cache will be expired after 24 hours.  Replacing existing items resets their age clock.  Each item has its own internal expiration date, and if that date comes to pass, fetching the item will immediately cause it to be deleted, and return `undefined`.  Note that items are not "actively deleted" based on an interval timer, but rather expired items delete themselves on fetch (or may be expunged for other reasons, i.e. `maxItems` and/or `maxBytes`).
@@ -154,7 +154,7 @@ And in this case all items added to the cache will be expired after 24 hours.  R
 You can specify a custom expiration date for your items individually, by passing a metadata object to `set()` as the 3rd argument, and including an explicit `expires` property therein:
 
 ```js
-var someFutureDate = ( Date.now() / 1000 ) + 86400; // 24 hours from now
+let someFutureDate = ( Date.now() / 1000 ) + 86400; // 24 hours from now
 cache.set( 'key1', "ABCDEFGHIJ", { expires: someFutureDate } );
 ```
 
@@ -166,7 +166,7 @@ The `expires` property needs to be an Epoch timestamp, as shown above.  You do n
 
 ```js
 const LRU = require('pixl-cache');
-var cache = new LRU();
+let cache = new LRU();
 ```
 
 The constructor creates a cache instance.  You can optionally pass an object containing any of these properties:
@@ -180,7 +180,7 @@ The constructor creates a cache instance.  You can optionally pass an object con
 The default of `0` means infinite.  If multiple configuration properties are specified, whichever one kicks in first will expire keys.  Here is an example with all properties set:
 
 ```js
-var cache = new LRU({
+let cache = new LRU({
 	maxItems: 1000,
 	maxBytes: 1048576, // 1 MB
 	maxAge: 86400 // 24 hours
@@ -214,7 +214,7 @@ Note that if you want to store either `null` or `undefined` as cache values, you
 ## get
 
 ```js
-var value = cache.get( 'key1' );
+let value = cache.get( 'key1' );
 ```
 
 The `get()` method fetches a value given a key.  If the key is not found in the cache (or it exists but is expired) the return value will be `undefined`.  Note that when fetching any key, that object becomes the most recently used.
@@ -224,8 +224,8 @@ If the item is fetched on or after its expiration date (i.e. when using `maxAge`
 ## getMeta
 
 ```js
-var item = cache.getMeta( 'key1' );
-var mytag = item.mytag; // custom metadata
+let item = cache.getMeta( 'key1' );
+let mytag = item.mytag; // custom metadata
 ```
 
 The `getMeta()` method fetches the internal cache object wrapper given its key, which includes any metadata you may have specified when you called `set()`.  The object will always have the following properties, along with your metadata merged in:
@@ -273,7 +273,7 @@ The `clear()` method clears the **entire** cache, deleting all objects.  It does
 ## getStats
 
 ```js
-var stats = cache.getStats();
+let stats = cache.getStats();
 ```
 
 The `getStats()` method returns an object containing some basic statistics about the cache, including the current total keys, total bytes, fullness percentage estimate, and the 10 hottest (most used) keys.  Example response, formatted as JSON:
