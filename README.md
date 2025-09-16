@@ -33,7 +33,7 @@
 
 **pixl-cache** is a very simple LRU (Least Recently Used) cache module for Node.js.  It works like a hash map with `set()` and `get()` methods, but when it detects an overflow (configurable by total keys or total bytes) it automatically expunges the least recently accessed objects from the cache.  It is fast, stable, and has no dependencies.
 
-Internally the cache is implemented as a combination of a hash and a double-linked list.  When items are accessed (added, replaced or fetched) they are promoted to the front of the linked list.  When the max size (keys or bytes) is exceeded, items are dropped from the back of the list.  Items can also have an optional max age (i.e. expiration date).
+Internally the cache is implemented as a combination of a hash map and a double-linked list.  When items are accessed (added, replaced or fetched) they are promoted to the front of the linked list.  When the max size (keys or bytes) is exceeded, items are dropped from the back of the list.  Items can also have an optional max age (i.e. expiration date).
 
 ## Features
 
@@ -366,7 +366,7 @@ npm test
 
 **The MIT License (MIT)**
 
-*Copyright (c) 2019 Joseph Huckaby.*
+*Copyright (c) 2019 - 2025 Joseph Huckaby.*
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

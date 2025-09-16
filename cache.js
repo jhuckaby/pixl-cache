@@ -1,7 +1,7 @@
 // Simple LRU Cache for Node.js
-// Uses a combination of a hash and a double-linked list.
+// Uses a combination of a hash map and a double-linked list.
 // To use maxBytes, your values are expected to have a `length` property.
-// Copyright (c) 2019 Joseph Huckaby. MIT License.
+// Copyright (c) 2019 - 2025 Joseph Huckaby. MIT License.
 
 var EventEmitter = require("events").EventEmitter;
 
@@ -21,13 +21,13 @@ class Cache extends EventEmitter {
 		if (opts) {
 			for (var key in opts) this[key] = opts[key];
 		}
-	
+		
 		this.clear();
 	}
 	
 	clear() {
 		// empty the cache
-		this.items = {};
+		this.items = new Map();
 		this.first = null;
 		this.last = null;
 		
@@ -40,7 +40,7 @@ class Cache extends EventEmitter {
 		// set new key or replace existing
 		// either way, move item to head of list
 		// run maintenance after
-		var item = this.items[key];
+		var item = this.items.get(key);
 		if (!meta) meta = {};
 		
 		if (!("length" in meta)) {
@@ -59,12 +59,13 @@ class Cache extends EventEmitter {
 		}
 		else {
 			// add new
-			item = this.items[key] = {
+			item = {
 				key: key, 
 				value: value, 
 				prev: null, 
 				next: null 
 			};
+			this.items.set(key, item);
 			this.bytes += (key.length * 2) + (meta.length || value.length || 0);
 			this.count++;
 		}
@@ -94,7 +95,7 @@ class Cache extends EventEmitter {
 	get(key) {
 		// fetch key and return value
 		// move object to head of list
-		var item = this.items[key];
+		var item = this.items.get(key);
 		if (!item) return undefined;
 		if (item.expires && (Date.now() / 1000 >= item.expires)) {
 			this.emit( 'expire', item, 'age' );
@@ -109,7 +110,7 @@ class Cache extends EventEmitter {
 		// fetch key and return internal cache wrapper object
 		// will contain any metadata user added when key was set
 		// (this still moves object to front of list)
-		var item = this.items[key];
+		var item = this.items.get(key);
 		if (!item) return undefined;
 		if (item.expires && (Date.now() / 1000 >= item.expires)) {
 			this.emit( 'expire', item, 'age' );
@@ -122,12 +123,12 @@ class Cache extends EventEmitter {
 	
 	delete(key) {
 		// remove key from cache
-		var item = this.items[key];
+		var item = this.items.get(key);
 		if (!item) return false;
 		
 		this.bytes -= (key.length * 2) + (item.length || item.value.length || 0);
 		this.count--;
-		delete this.items[key];
+		this.items.delete(key);
 		
 		// adjust linked list
 		if (item.prev) item.prev.next = item.next;
@@ -141,7 +142,7 @@ class Cache extends EventEmitter {
 	has(key) {
 		// return true if key is present in cache
 		// (do not change order)
-		var item = this.items[key];
+		var item = this.items.get(key);
 		if (!item) return false;
 		if (item.expires && (Date.now() / 1000 >= item.expires)) {
 			return false;
