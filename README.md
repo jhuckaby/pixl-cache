@@ -47,22 +47,6 @@ Internally the cache is implemented as a combination of a hash map and a double-
 - Can store custom metadata along with cache objects
 - No dependencies
 
-## Benchmarks
-
-Note that while pixl-cache may be the fastest and use the least memory among the packages tested, it also has the least amount of features.  The other packages listed here are all awesome, and you should consider using them.  Most have been battle-tested in production for years, whereas pixl-cache has not.
-
-Read and write 1,000,000 keys (shorter times are better):
-
-| Package | Version | Write Time | Read Time | Max Memory Usage |
-|---------|---------|------------|-----------|------------------|
-| [stale-lru-cache](https://github.com/cyberthom/stale-lru-cache) | v5.1.1 | 4096 ms | 146 ms | 155.6 MB |
-| [fast-lru](https://github.com/playgroundtheory/fast-lru) | v3.0.1 | 4097 ms | 121 ms | 146.1 MB |
-| [lru-cache](https://github.com/isaacs/node-lru-cache) | v5.1.1 | 3821 ms | 43 ms | 154.1 MB |
-| [node-cache](https://github.com/mpneuried/nodecache) | v3.1.0 | 3872 ms | 240 ms | 242.9 MB |
-| [pixl-cache](https://github.com/jhuckaby/pixl-cache) | v1.0.6 | 3308 ms | 23 ms | 143.9 MB |
-
-Tests performed on a MacBook Pro 2019 (8 core 2.4 GHz Intel Core i9) with Node v10.14.1.
-
 # Usage
 
 Use [npm](https://www.npmjs.com/) to install the module:
