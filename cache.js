@@ -16,6 +16,7 @@ class Cache extends EventEmitter {
 		this.maxItems = 0;
 		this.maxBytes = 0;
 		this.maxAge = 0;
+		this.copyBuffers = false;
 		
 		// user overrides
 		if (opts) {
@@ -42,6 +43,13 @@ class Cache extends EventEmitter {
 		// run maintenance after
 		var item = this.items.get(key);
 		if (!meta) meta = {};
+		
+		// optionally store a copy of buffers
+		if (this.copyBuffers && Buffer.isBuffer(value)) {
+			var copy = Buffer.allocUnsafeSlow(value.length);
+			value.copy(copy);
+			value = copy;
+		}
 		
 		if (!("length" in meta)) {
 			switch (typeof(value)) {

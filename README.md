@@ -7,6 +7,7 @@
 - [Usage](#usage)
 	* [Overflow](#overflow)
 	* [Expiration](#expiration)
+	* [Buffer Copying](#buffer-copying)
 - [API](#api)
 	* [constructor](#constructor)
 	* [set](#set)
@@ -45,6 +46,7 @@ Internally the cache is implemented as a combination of a hash map and a double-
 - Optional expiration date for items
 - Event listener for ejecting expired items
 - Can store custom metadata along with cache objects
+- Optional Buffer copying to avoid retaining shared memory pools
 - No dependencies
 
 # Usage
@@ -144,6 +146,25 @@ cache.set( 'key1', "ABCDEFGHIJ", { expires: someFutureDate } );
 
 The `expires` property needs to be an Epoch timestamp, as shown above.  You do not need to enable `maxAge` in order to use the custom `expires` property.  It works with any combination of configuration options, and overrides `maxAge` if it is also set.  If you set an `expires` date in the past, the key is immediately deleted upon the next fetch.
 
+## Buffer Copying
+
+If your cache stores Buffers for a long time, consider enabling `copyBuffers`.  Small Buffers and Buffer slices can share a much larger underlying allocation, so retaining one in the cache may keep that entire allocation in memory.  With `copyBuffers: true`, each Buffer passed to `set()` is copied into its own unpooled allocation before being stored.
+
+```js
+let cache = new LRU({ copyBuffers: true });
+let source = Buffer.from('Hello');
+
+cache.set( 'greeting', source );
+
+// Changing the original Buffer leaves the cached copy intact.
+source.fill(0);
+console.log( cache.get('greeting').toString() ); // Hello
+```
+
+The option defaults to `false`, which preserves the original Buffer reference.  When enabled, copying happens each time a Buffer is added or replaced, at the cost of an extra allocation and byte copy.  Other value types are unaffected, including Buffers nested inside objects or arrays.
+
+Reads do not make additional copies: `get()` and `getMeta().value` return the stored Buffer itself.  Modifying that returned Buffer changes the cached value.  Cache byte accounting continues to use the key and value sizes, or your custom `length` metadata.
+
 # API
 
 ## constructor
@@ -160,14 +181,16 @@ The constructor creates a cache instance.  You can optionally pass an object con
 | `maxItems` | `0` | Specifies the maximum number of objects allowed in the cache, before it starts expunging the least recently used. |
 | `maxBytes` | `0` | Specifies the maximum value bytes allowed in the cache, before it starts expunging the least recently used. |
 | `maxAge` | `0` | Specifies the default maximum age in seconds for all keys added to the cache, before they are deleted on fetch. |
+| `copyBuffers` | `false` | Stores an independent, unpooled copy of each Buffer passed to `set()`.  See [Buffer Copying](#buffer-copying). |
 
-The default of `0` means infinite.  If multiple configuration properties are specified, whichever one kicks in first will expire keys.  Here is an example with all properties set:
+For `maxItems`, `maxBytes` and `maxAge`, the default of `0` means infinite.  If multiple limits are specified, whichever one kicks in first will expire keys.  Here is an example with all properties set:
 
 ```js
 let cache = new LRU({
 	maxItems: 1000,
 	maxBytes: 1048576, // 1 MB
-	maxAge: 86400 // 24 hours
+	maxAge: 86400, // 24 hours
+	copyBuffers: true
 });
 ```
 
@@ -178,6 +201,8 @@ cache.set( 'key1', "Value 1" );
 ```
 
 The `set()` method adds or replaces a single object in the cache, given a key and value.  The key is assumed to be a string, but the value can be anything.  Anytime an object is added or replaced, it becomes the most recently used.
+
+If `copyBuffers` is enabled, Buffer values are copied when added or replaced.  See [Buffer Copying](#buffer-copying) for details.
 
 Adding new keys may cause the least recently used object(s) to be expired from the cache.
 
@@ -217,7 +242,7 @@ The `getMeta()` method fetches the internal cache object wrapper given its key, 
 | Key | Description |
 |-----|-------------|
 | `key` | The raw cache object key, as passed to `set()`. |
-| `value` | The raw cache object value, as passed to `set()` and returned by `get()`. |
+| `value` | The stored value returned by `get()`.  For Buffers with `copyBuffers` enabled, this is the cached copy. |
 | `next` | A pointer to the *next* cache object in the linked list.  Please do not touch. |
 | `prev` | A pointer to the *previous* cache object in the linked list.  Please do not touch. |
 

@@ -85,6 +85,167 @@ exports.tests = [
 		test.done();
 	},
 	
+	function copyBuffersDisabled(test) {
+		// Both the default and explicit opt-out must preserve reference semantics.
+		[ undefined, { copyBuffers: false } ].forEach( function(opts) {
+			var cache = new Cache(opts);
+			var source = Buffer.from([ 1, 2, 3 ]);
+			cache.set( 'key', source );
+			
+			test.ok( cache.copyBuffers === false, "Buffer copying should be disabled" );
+			test.ok( cache.get('key') === source, "Disabled copying should retain the original Buffer" );
+			
+			source[0] = 99;
+			test.ok( cache.get('key')[0] === 99, "Source mutations should remain visible when copying is disabled" );
+		});
+		
+		test.done();
+	},
+	
+	function copyBuffersIsolation(test) {
+		// Exercise ordinary Buffer inputs, including bytes outside the ASCII range.
+		var cache = new Cache({ copyBuffers: true });
+		var source = Buffer.from([ 0, 1, 127, 128, 255 ]);
+		cache.set( 'first', source, { date: 12345 } );
+		cache.set( 'second', source );
+		var first = cache.get('first');
+		var second = cache.get('second');
+		
+		test.ok( Buffer.isBuffer(first), "Copied value should still be a Buffer" );
+		test.ok( first !== source && first.equals(source), "Copy should preserve every byte in a new Buffer" );
+		test.ok( second !== first, "Each set should create an independent copy" );
+		test.ok( cache.getMeta('first').date === 12345, "Copying should preserve custom metadata" );
+		
+		// Input mutation must not corrupt either cached value.
+		source.fill(42);
+		test.ok( first.equals(Buffer.from([ 0, 1, 127, 128, 255 ])), "Source mutation changed the cached bytes" );
+		test.ok( second.equals(first), "Source mutation changed the second cached copy" );
+		
+		// Copying happens on set only. Reads still expose the stored, mutable Buffer.
+		test.ok( cache.get('first') === first && cache.getMeta('first').value === first, "Reads should return the stored copy" );
+		first[0] = 99;
+		test.ok( cache.get('first')[0] === 99, "Reads should not make additional copies" );
+		test.ok( source[0] === 42 && second[0] === 0, "Cached mutation leaked into another Buffer" );
+		
+		test.done();
+	},
+	
+	function copyBuffersSlice(test) {
+		// A small, offset view must copy only its selected bytes. Keep different
+		// sentinel bytes outside the view to catch copying the wrong region.
+		var cache = new Cache({ copyBuffers: true });
+		var backing = Buffer.alloc(65536, 0xAA);
+		var source = backing.subarray(123, 140);
+		source.fill(0xBB);
+		cache.set( 'slice', source );
+		var value = cache.get('slice');
+		
+		test.ok( value.equals(Buffer.alloc(17, 0xBB)), "Copy should include only the selected slice" );
+		test.ok( cache.bytes === 27, "Byte accounting should include only the key and slice payload" );
+		
+		backing.fill(0);
+		test.ok( value.equals(Buffer.alloc(17, 0xBB)), "Backing allocation mutation changed the cached slice" );
+		
+		test.done();
+	},
+	
+	function copyBuffersSizes(test) {
+		// Include empty negative-cache stubs, typical JSON sizes, and large Buffers.
+		// Check content and public cache accounting without inspecting allocations.
+		[ 0, 5120, 131072 ].forEach( function(size) {
+			var cache = new Cache({ copyBuffers: true });
+			var source = Buffer.alloc(size, 0xA5);
+			cache.set( 'key', source );
+			var value = cache.get('key');
+			
+			test.ok( Buffer.isBuffer(value) && value !== source, "Expected a new Buffer for size " + size );
+			test.ok( value.equals(source), "Copied bytes differ for size " + size );
+			test.ok( cache.count === 1 && cache.bytes === size + 6, "Incorrect accounting for size " + size );
+			
+			if (size) {
+				// Verify isolation by modifying the source, without relying on how
+				// Node allocates the underlying storage for either Buffer.
+				source.fill(0);
+				test.ok( value.equals(Buffer.alloc(size, 0xA5)), "Source mutation changed the cached value for size " + size );
+			}
+		});
+		
+		test.done();
+	},
+	
+	function copyBuffersReplace(test) {
+		// Replacing an existing key must copy again and adjust payload accounting.
+		var cache = new Cache({ copyBuffers: true });
+		cache.set( 'key', Buffer.from('old'), { date: 12345 } );
+		var previous = cache.get('key');
+		var source = Buffer.from('new value');
+		cache.set( 'key', source );
+		var item = cache.getMeta('key');
+		
+		test.ok( item.value !== source && item.value !== previous, "Replacement should store a fresh copy" );
+		test.ok( item.value.equals(source), "Replacement bytes are incorrect" );
+		test.ok( previous.toString() === 'old', "Replacement modified the previous cached Buffer" );
+		test.ok( item.date === 12345, "Replacement should preserve existing metadata" );
+		test.ok( cache.count === 1 && cache.bytes === 15, "Replacement payload accounting is incorrect" );
+		
+		source.fill(0);
+		test.ok( item.value.toString() === 'new value', "Source mutation changed the replacement" );
+		
+		// Explicit length metadata still overrides payload accounting when copying.
+		cache.set( 'key', Buffer.from('custom'), { length: 100, date: 54321 } );
+		test.ok( cache.bytes === 106 && cache.getMeta('key').date === 54321, "Custom metadata was not applied to the copied value" );
+		cache.delete('key');
+		test.ok( cache.count === 0 && cache.bytes === 0, "Deleting a copied value did not clear its accounting" );
+		
+		test.done();
+	},
+	
+	function copyBuffersEviction(test) {
+		// Two 4-byte payloads plus their single-character keys fit exactly.
+		// Reading A should promote it, so adding C must evict B with its copied value.
+		var cache = new Cache({ copyBuffers: true, maxBytes: 12 });
+		var source = Buffer.from('BBBB');
+		var expired = [];
+		cache.on('expire', function(item, reason) {
+			expired.push({ item: item, reason: reason });
+		});
+		cache.set( 'A', Buffer.from('AAAA') );
+		cache.set( 'B', source );
+		cache.get('A');
+		cache.set( 'C', Buffer.from('CCCC') );
+		
+		test.ok( expired.length === 1, "Expected exactly one byte-limit eviction" );
+		if (expired.length) {
+			test.ok( expired[0].item.key === 'B' && expired[0].reason === 'bytes', "Incorrect LRU eviction" );
+			test.ok( expired[0].item.value !== source && expired[0].item.value.equals(source), "Expire event should expose the copied value" );
+		}
+		test.ok( !cache.has('B') && cache.has('A') && cache.has('C'), "Incorrect keys survived eviction" );
+		test.ok( cache.count === 2 && cache.bytes === 12, "Byte-limit accounting is incorrect after eviction" );
+		
+		cache.clear();
+		test.ok( cache.count === 0 && cache.bytes === 0, "Clear should reset copied-value accounting" );
+		cache.set( 'B', source );
+		test.ok( cache.get('B') !== source, "Clear should preserve the copyBuffers option" );
+		
+		test.done();
+	},
+	
+	function copyBuffersOtherValues(test) {
+		// This is a Buffer-only feature, not a general clone or deep-copy option.
+		var cache = new Cache({ copyBuffers: true });
+		var nested = Buffer.from('nested');
+		var values = [ 'text', 123, true, false, { data: nested }, [ 1, 2 ], new Uint8Array([ 3, 4 ]), null, undefined ];
+		values.forEach( function(value, idx) {
+			// Null and undefined require explicit nonzero length metadata in this API.
+			var meta = (value == null) ? { length: 1 } : undefined;
+			cache.set( 'key' + idx, value, meta );
+			test.ok( cache.get('key' + idx) === value, "Non-Buffer value or reference changed at index " + idx );
+		});
+		test.ok( cache.get('key4').data === nested, "Nested Buffers should not be copied" );
+		
+		test.done();
+	},
+	
 	function sizes(test) {
 		// test javascript native size calculation
 		var cache = new Cache();
